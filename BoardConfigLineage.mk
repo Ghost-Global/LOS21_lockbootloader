@@ -35,4 +35,4 @@ AB_OTA_PARTITIONS += \
 -include vendor/lineage/config/BoardConfigReservedSize.mk
 
 # Verified Boot
-BOARD_AVB_MAKE_VBMETA_IMAGE_ARGS += --flags 3
+# BOARD_AVB_MAKE_VBMETA_IMAGE_ARGS += --flags 3

@@ -2155,9 +2155,11 @@ $(if $(BOARD_$(_var)IMAGE_SQUASHFS_COMPRESSOR),$(hide) echo "$(1)_squashfs_compr
 $(if $(BOARD_$(_var)IMAGE_SQUASHFS_COMPRESSOR_OPT),$(hide) echo "$(1)_squashfs_compressor_opt=$(BOARD_$(_var)IMAGE_SQUASHFS_COMPRESSOR_OPT)" >> $(2))
 $(if $(BOARD_$(_var)IMAGE_SQUASHFS_DISABLE_4K_ALIGN),$(hide) echo "$(1)_squashfs_disable_4k_align=$(BOARD_$(_var)IMAGE_SQUASHFS_DISABLE_4K_ALIGN)" >> $(2))
 $(if $(PRODUCT_$(_var)_BASE_FS_PATH),$(hide) echo "$(1)_base_fs_file=$(PRODUCT_$(_var)_BASE_FS_PATH)" >> $(2))
-$(eval _size := $(BOARD_$(_var)IMAGE_PARTITION_SIZE))
-$(eval _reserved := $(BOARD_$(_var)IMAGE_PARTITION_RESERVED_SIZE))
-$(eval _headroom := $(PRODUCT_$(_var)_HEADROOM))
+$(if $(filter true,$(AB_OTA_UPDATER)),,\
+    $(eval _size := $(BOARD_$(_var)IMAGE_PARTITION_SIZE))
+    $(eval _reserved := $(BOARD_$(_var)IMAGE_PARTITION_RESERVED_SIZE))
+    $(eval _headroom := $(PRODUCT_$(_var)_HEADROOM))
+)
 $(if $(or $(_size), $(_reserved), $(_headroom)),,
     $(hide) echo "$(1)_disable_sparse=true" >> $(2))
 $(call add-common-flags-to-image-props,$(1),$(2))
@@ -4712,16 +4714,19 @@ endef
 # $(1): Partition name, e.g. boot or system.
 define check-and-set-avb-args
 $(eval _in_chained_vbmeta := $(filter $(1),$(INTERNAL_AVB_PARTITIONS_IN_CHAINED_VBMETA_IMAGES)))
-$(if $(BOARD_AVB_$(call to-upper,$(1))_KEY_PATH),\
-    $(if $(_in_chained_vbmeta),\
-        $(error Chaining partition "$(1)" in chained VBMeta image is not supported)) \
-    $(call _check-and-set-avb-chain-args,$(1)),\
-    $(if $(_in_chained_vbmeta),,\
-        $(if $(filter boot,$(1)),\
-            $(eval INTERNAL_AVB_MAKE_VBMETA_IMAGE_ARGS += \
-                --include_descriptors_from_image $(firstword $(call images-for-partitions,$(1)))),\
-            $(eval INTERNAL_AVB_MAKE_VBMETA_IMAGE_ARGS += \
-                --include_descriptors_from_image $(call images-for-partitions,$(1))))))
+$(eval _partition_path := $(call images-for-partitions,$(1)))
+$(if $(_partition_path),\
+    $(if $(BOARD_AVB_$(call to-upper,$(1))_KEY_PATH),\
+        $(if $(_in_chained_vbmeta),\
+            $(error Chaining partition "$(1)" in chained VBMeta image is not supported)) \
+        $(call _check-and-set-avb-chain-args,$(1)),\
+        $(if $(_in_chained_vbmeta),,\
+            $(if $(filter boot,$(1)),\
+                $(eval INTERNAL_AVB_MAKE_VBMETA_IMAGE_ARGS += \
+                    --include_descriptors_from_image $(firstword $(_partition_path))),\
+                $(eval INTERNAL_AVB_MAKE_VBMETA_IMAGE_ARGS += \
+                    --include_descriptors_from_image $(_partition_path))))),\
+    $(info Partition path for "$(1)" not yet defined, not adding it to vbmeta))
 endef
 
 # Checks and sets build variables for a custom chained partition to include it into vbmeta.img.
@@ -6790,6 +6795,11 @@ endif # BOARD_CUSTOMIMAGES_PARTITION_LIST
 	    echo $(part) >> $(zip_root)/META/pack_radioimages.txt;)
 	@# Run fs_config on all the system, vendor, boot ramdisk,
 	@# and recovery ramdisk files in the zip, and save the output
+ifdef BOARD_PREBUILT_IMAGES
+  @# Copy any other prebuilt images in to the IMAGES directory for packaging.
+  $(hide) mkdir -p $(zip_root)/IMAGES
+  @$(foreach image,$(BOARD_PREBUILT_IMAGES), cp $(BOARD_PREBUILT_IMAGES_PATH)/$(image).img $(zip_root)/IMAGES/$(image).img;)
+endif
 ifdef BUILDING_SYSTEM_IMAGE
 	$(hide) $(call copy-image-and-generate-map,$(BUILT_SYSTEMIMAGE),$(zip_root)/IMAGES,system)
 	$(hide) $(call fs_config,$(zip_root)/SYSTEM,system/) > $(zip_root)/META/filesystem_config.txt
