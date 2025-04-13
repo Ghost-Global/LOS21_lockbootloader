@@ -20,11 +20,11 @@ include build/make/target/board/BoardConfigPixelCommon.mk
 PRODUCT_FULL_TREBLE_OVERRIDE := true
 
 # HACK : To fix up after bring up multimedia devices.
-TARGET_SOC := gs101
+TARGET_SOC := zuma
 
 TARGET_SOC_NAME := google
 
-USES_DEVICE_GOOGLE_GS101 := true
+USES_DEVICE_GOOGLE_ZUMA := true
 
 TARGET_ARCH := arm64
 TARGET_ARCH_VARIANT := armv8-2a
@@ -32,22 +32,17 @@ TARGET_CPU_ABI := arm64-v8a
 TARGET_CPU_VARIANT := cortex-a55
 TARGET_CPU_VARIANT_RUNTIME := cortex-a55
 
-DEVICE_IS_64BIT_ONLY ?= $(if $(filter %_64,$(TARGET_PRODUCT)),true,false)
-
-ifneq ($(DEVICE_IS_64BIT_ONLY),true)
-TARGET_2ND_ARCH := arm
-TARGET_2ND_ARCH_VARIANT := armv8-a
-TARGET_2ND_CPU_ABI := armeabi-v7a
-TARGET_2ND_CPU_ABI2 := armeabi
-TARGET_2ND_CPU_VARIANT := generic
-TARGET_2ND_CPU_VARIANT_RUNTIME := cortex-a53
-endif
-
-BOARD_KERNEL_CMDLINE += dyndbg=\"func alloc_contig_dump_pages +p\"
-BOARD_KERNEL_CMDLINE += earlycon=exynos4210,0x10A00000 console=ttySAC0,115200 androidboot.console=ttySAC0 printk.devkmsg=on
+BOARD_KERNEL_CMDLINE += earlycon=exynos4210,0x10870000 console=ttySAC0,115200 androidboot.console=ttySAC0 printk.devkmsg=on
 BOARD_KERNEL_CMDLINE += cma_sysfs.experimental=Y
-BOARD_KERNEL_CMDLINE += swiotlb=noforce
-BOARD_BOOTCONFIG += androidboot.boot_devices=14700000.ufs
+BOARD_KERNEL_CMDLINE += cgroup_disable=memory
+BOARD_KERNEL_CMDLINE += rcupdate.rcu_expedited=1 rcu_nocbs=all
+BOARD_KERNEL_CMDLINE += swiotlb=1024
+BOARD_KERNEL_CMDLINE += cgroup.memory=nokmem
+BOARD_KERNEL_CMDLINE += sysctl.kernel.sched_pelt_multiplier=4
+ifeq (,$(filter %_fullmte,$(TARGET_PRODUCT)))
+BOARD_KERNEL_CMDLINE += kasan=off
+endif
+BOARD_BOOTCONFIG += androidboot.boot_devices=13200000.ufs
 
 TARGET_NO_BOOTLOADER := true
 TARGET_NO_RADIOIMAGE := true
@@ -60,12 +55,12 @@ endif
 BOARD_USES_GENERIC_KERNEL_IMAGE := true
 BOARD_MOVE_RECOVERY_RESOURCES_TO_VENDOR_BOOT := true
 BOARD_MOVE_GSI_AVB_KEYS_TO_VENDOR_BOOT := true
-TARGET_RECOVERY_WIPE := device/google/gs101/conf/recovery.wipe
+TARGET_RECOVERY_WIPE := device/google/zuma/conf/recovery.wipe
 
 # This is the fstab file that will be included in the recovery image.  Note that
 # recovery doesn't care about the encryption settings, so it doesn't matter
 # whether we use the normal or the fips fstab here.
-TARGET_RECOVERY_FSTAB_GENRULE = gen_fstab.gs101
+TARGET_RECOVERY_FSTAB_GENRULE := gen_fstab.zuma-sw-encrypt
 
 TARGET_RECOVERY_PIXEL_FORMAT := ABGR_8888
 TARGET_RECOVERY_UI_MARGIN_HEIGHT := 165
@@ -77,6 +72,7 @@ AB_OTA_UPDATER := true
 
 AB_OTA_PARTITIONS += \
 	system \
+	system_dlkm \
 	system_ext \
 	product \
 	vbmeta_system
@@ -84,9 +80,15 @@ AB_OTA_PARTITIONS += \
 ifneq ($(PRODUCT_BUILD_BOOT_IMAGE),false)
 AB_OTA_PARTITIONS += boot
 endif
+ifneq ($(PRODUCT_BUILD_INIT_BOOT_IMAGE), false)
+AB_OTA_PARTITIONS += init_boot
+endif
 ifneq ($(PRODUCT_BUILD_VENDOR_BOOT_IMAGE),false)
 AB_OTA_PARTITIONS += vendor_boot
 AB_OTA_PARTITIONS += dtbo
+endif
+ifeq ($(PRODUCT_BUILD_VENDOR_KERNEL_BOOT_IMAGE),true)
+AB_OTA_PARTITIONS += vendor_kernel_boot
 endif
 ifneq ($(PRODUCT_BUILD_VBMETA_IMAGE),false)
 AB_OTA_PARTITIONS += vbmeta
@@ -99,11 +101,13 @@ endif
 BOARD_EMULATOR_COMMON_MODULES := liblight
 
 OVERRIDE_RS_DRIVER := libRSDriverArm.so
-BOARD_EGL_CFG := device/google/gs101/conf/egl.cfg
+BOARD_EGL_CFG := device/google/zuma/conf/egl.cfg
 #BOARD_USES_HGL := true
 USE_OPENGL_RENDERER := true
 NUM_FRAMEBUFFER_SURFACE_BUFFERS := 3
 BOARD_USES_EXYNOS5_COMMON_GRALLOC := true
+BOARD_USES_EXYNOS_GRALLOC_VERSION := 4
+#BOARD_USES_EXYNOS_GRALLOC_VERSION := $(DEVICE_USES_EXYNOS_GRALLOC_VERSION)
 BOARD_USES_ALIGN_RESTRICTION := false
 BOARD_USES_GRALLOC_ION_SYNC := true
 
@@ -111,7 +115,9 @@ BOARD_USES_GRALLOC_ION_SYNC := true
 BOARD_USES_SWIFTSHADER := false
 
 # Gralloc4
+ifeq ($(BOARD_USES_EXYNOS_GRALLOC_VERSION),4)
 ifeq ($(BOARD_USES_SWIFTSHADER),true)
+TARGET_DISABLE_TRIPLE_BUFFERING := true
 $(call soong_config_set,arm_gralloc,gralloc_arm_no_external_afbc,true)
 $(call soong_config_set,arm_gralloc,mali_gpu_support_afbc_basic,false)
 $(call soong_config_set,arm_gralloc,mali_gpu_support_afbc_wideblk,false)
@@ -125,13 +131,26 @@ $(call soong_config_set,arm_gralloc,gralloc_init_afbc,true)
 $(call soong_config_set,arm_gralloc,dpu_support_1010102_afbc,true)
 endif # ifeq ($(BOARD_USES_SWIFTSHADER),true)
 $(call soong_config_set,arm_gralloc,gralloc_ion_sync_on_lock,$(BOARD_USES_GRALLOC_ION_SYNC))
+endif # ifeq ($(BOARD_USES_EXYNOS_GRALLOC_VERSION),4)
+
+# libVendorGraphicbuffer
+ifeq ($(BOARD_USES_EXYNOS_GRALLOC_VERSION),4)
+$(call soong_config_set,vendorgraphicbuffer,gralloc_version,four)
+else
+$(call soong_config_set,vendorgraphicbuffer,gralloc_version,three)
+endif
+
+#display_unit_test
+ifeq ($(USES_DEVICE_GOOGLE_ZUMA),true)
+$(call soong_config_set,display_unit_test,soc,zuma)
+endif
 
 # Graphics
 #BOARD_USES_EXYNOS_DATASPACE_FEATURE := true
 
 # Enable chain partition for system.
-BOARD_AVB_VBMETA_SYSTEM := system system_ext product
-BOARD_AVB_VBMETA_SYSTEM_KEY_PATH := external/avb/test/data/avb_rsa4096.pem
+BOARD_AVB_VBMETA_SYSTEM := system system_dlkm system_ext product
+BOARD_AVB_VBMETA_SYSTEM_KEY_PATH := /home/huytp/.android-certs/releasekey.key
 BOARD_AVB_VBMETA_SYSTEM_ALGORITHM := SHA256_RSA4096
 BOARD_AVB_VBMETA_SYSTEM_ROLLBACK_INDEX := $(PLATFORM_SECURITY_PATCH_TIMESTAMP)
 BOARD_AVB_VBMETA_SYSTEM_ROLLBACK_INDEX_LOCATION := 1
@@ -141,10 +160,16 @@ BOARD_AVB_VBMETA_SYSTEM += pvmfw
 endif
 
 # Enable chained vbmeta for boot images
-BOARD_AVB_BOOT_KEY_PATH := external/avb/test/data/avb_rsa4096.pem
+BOARD_AVB_BOOT_KEY_PATH := /home/huytp/.android-certs/releasekey.key
 BOARD_AVB_BOOT_ALGORITHM := SHA256_RSA4096
 BOARD_AVB_BOOT_ROLLBACK_INDEX := $(PLATFORM_SECURITY_PATCH_TIMESTAMP)
 BOARD_AVB_BOOT_ROLLBACK_INDEX_LOCATION := 2
+
+# Enable chained vbmeta for init_boot images
+BOARD_AVB_INIT_BOOT_KEY_PATH := /home/huytp/.android-certs/releasekey.key
+BOARD_AVB_INIT_BOOT_ALGORITHM := SHA256_RSA4096
+BOARD_AVB_INIT_BOOT_ROLLBACK_INDEX := $(PLATFORM_SECURITY_PATCH_TIMESTAMP)
+BOARD_AVB_INIT_BOOT_ROLLBACK_INDEX_LOCATION := 4
 
 TARGET_USERIMAGES_USE_EXT4 := true
 TARGET_USERIMAGES_USE_F2FS := true
@@ -153,6 +178,9 @@ PRODUCT_FS_COMPRESSION := 1
 BOARD_FLASH_BLOCK_SIZE := 4096
 BOARD_MOUNT_SDCARD_RW := true
 
+# system.img
+BOARD_SYSTEMIMAGE_FILE_SYSTEM_TYPE := ext4
+
 # product.img
 BOARD_PRODUCTIMAGE_FILE_SYSTEM_TYPE := ext4
 TARGET_COPY_OUT_PRODUCT := product
@@ -160,6 +188,9 @@ TARGET_COPY_OUT_PRODUCT := product
 # system_ext.img
 BOARD_SYSTEM_EXTIMAGE_FILE_SYSTEM_TYPE := ext4
 TARGET_COPY_OUT_SYSTEM_EXT := system_ext
+
+# persist.img
+BOARD_PERSISTIMAGE_FILE_SYSTEM_TYPE := f2fs
 
 ########################
 # Video Codec
@@ -173,7 +204,7 @@ BOARD_SUPPORT_MFC_ENC_RGB := true
 BOARD_USE_BLOB_ALLOCATOR := false
 BOARD_SUPPORT_MFC_ENC_BT2020 := true
 BOARD_SUPPORT_FLEXIBLE_P010 := true
-
+BOARD_SUPPORT_MFC_VERSION := 1660
 ########################
 
 BOARD_SUPER_PARTITION_SIZE := 8531214336
@@ -182,6 +213,7 @@ BOARD_SUPER_PARTITION_GROUPS := google_dynamic_partitions
 BOARD_GOOGLE_DYNAMIC_PARTITIONS_SIZE := 8527020032
 BOARD_GOOGLE_DYNAMIC_PARTITIONS_PARTITION_LIST := \
     system \
+    system_dlkm \
     system_ext \
     product \
     vendor \
@@ -190,8 +222,13 @@ BOARD_GOOGLE_DYNAMIC_PARTITIONS_PARTITION_LIST := \
 # Set error limit to BOARD_SUPER_PARTITON_SIZE - 500MB
 BOARD_SUPER_PARTITION_ERROR_LIMIT := 8006926336
 
+# Build a separate system_dlkm partition
+BOARD_USES_SYSTEM_DLKMIMAGE := true
+BOARD_SYSTEM_DLKMIMAGE_FILE_SYSTEM_TYPE := ext4
+TARGET_COPY_OUT_SYSTEM_DLKM := system_dlkm
+
 # Testing related defines
-BOARD_PERFSETUP_SCRIPT := platform_testing/scripts/perf-setup/r4o6-setup.sh
+BOARD_PERFSETUP_SCRIPT := platform_testing/scripts/perf-setup/p23-setup.sh
 
 #
 # AUDIO & VOICE
@@ -210,8 +247,6 @@ ifneq (,$(filter aosp_%,$(TARGET_PRODUCT)))
 $(call soong_config_set,aoc_audio_func,aosp_build,true)
 endif
 
-$(call soong_config_set,haptics,actuator_model,$(ACTUATOR_MODEL))
-
 # Primary AudioHAL Configuration
 #BOARD_USE_COMMON_AUDIOHAL := true
 #BOARD_USE_CALLIOPE_AUDIOHAL := false
@@ -224,12 +259,12 @@ $(call soong_config_set,haptics,actuator_model,$(ACTUATOR_MODEL))
 # SoundTriggerHAL Configuration
 #BOARD_USE_SOUNDTRIGGER_HAL := false
 
-# Vibrator HAL actuator model and adaptive haptics configuration
+# Vibrator HAL actuator model configuration
 $(call soong_config_set,haptics,actuator_model,$(ACTUATOR_MODEL))
 $(call soong_config_set,haptics,adaptive_haptics_feature,$(ADAPTIVE_HAPTICS_FEATURE))
 
 # HWComposer
-BOARD_HWC_VERSION := libhwc2.1
+BOARD_HWC_VERSION := hwc3
 TARGET_RUNNING_WITHOUT_SYNC_FRAMEWORK := false
 BOARD_HDMI_INCAPABLE := true
 TARGET_USES_HWC2 := true
@@ -240,7 +275,7 @@ HWC_SUPPORT_COLOR_TRANSFORM := true
 BOARD_USES_EXYNOS_AFBC_FEATURE := true
 #BOARD_USES_HDRUI_GLES_CONVERSION := true
 
-BOARD_LIBACRYL_DEFAULT_COMPOSITOR := fimg2d_gs101
+BOARD_LIBACRYL_DEFAULT_COMPOSITOR := fimg2d_zuma
 BOARD_LIBACRYL_G2D_HDR_PLUGIN := libacryl_hdr_plugin
 
 # HWCServices
@@ -289,7 +324,7 @@ BOARD_USES_METADATA_PARTITION := true
 #BOARD_USES_FIMGAPI_V5X := true
 
 # SECCOMP Policy
-BOARD_SECCOMP_POLICY = device/google/gs101/seccomp_policy
+BOARD_SECCOMP_POLICY = device/google/zuma/seccomp_policy
 
 #CURL
 BOARD_USES_CURL := true
@@ -333,14 +368,18 @@ BOARD_RAMDISK_USE_LZ4     := true
 BOARD_BOOT_HEADER_VERSION := 4
 BOARD_MKBOOTIMG_ARGS += --header_version $(BOARD_BOOT_HEADER_VERSION)
 
-BOARD_VENDOR_RAMDISK_FRAGMENTS := dlkm
-BOARD_VENDOR_RAMDISK_FRAGMENT.dlkm.KERNEL_MODULE_DIRS := top
+BOARD_INIT_BOOT_HEADER_VERSION := 4
+BOARD_MKBOOTIMG_INIT_ARGS += --header_version $(BOARD_INIT_BOOT_HEADER_VERSION)
 
 # Enable AVB2.0
 BOARD_AVB_ENABLE := true
 BOARD_BOOTIMAGE_PARTITION_SIZE := 0x04000000
+BOARD_INIT_BOOT_IMAGE_PARTITION_SIZE := 0x800000
 BOARD_VENDOR_BOOTIMAGE_PARTITION_SIZE := 0x04000000
 BOARD_DTBOIMG_PARTITION_SIZE := 0x01000000
+
+# Build vendor kernel boot image
+BOARD_VENDOR_KERNEL_BOOTIMAGE_PARTITION_SIZE := 0x04000000
 
 # Vendor ramdisk image for kernel development
 BOARD_BUILD_VENDOR_RAMDISK_IMAGE := true
@@ -348,41 +387,31 @@ BOARD_BUILD_VENDOR_RAMDISK_IMAGE := true
 KERNEL_MODULE_DIR := $(TARGET_KERNEL_DIR)
 KERNEL_MODULES := $(wildcard $(KERNEL_MODULE_DIR)/*.ko)
 
+BOARD_SYSTEM_KERNEL_MODULES_BLOCKLIST_FILE := $(KERNEL_MODULE_DIR)/system_dlkm.modules.blocklist
 BOARD_VENDOR_KERNEL_MODULES_BLOCKLIST_FILE := $(KERNEL_MODULE_DIR)/vendor_dlkm.modules.blocklist
 
-# Since Pixel 6/6pro doesn't have a system_dlkm partition, the GKI modules are
-# on the vendor_dlkm partition. In order to allow them to load properly, we
-# need to retain the module signature which would normally get stripped during
-# packaging. Disable stripping the vendor_dlkm modules to retain the GKI
-# modules' signature. Note, the pixel kernel builds always strip the modules in
-# favor of saving space via the kleaf property: strip_modules = True.
-BOARD_DO_NOT_STRIP_VENDOR_MODULES := true
-
-# Prebuilt kernel modules that are *not* listed in vendor_boot.modules.load
-BOARD_PREBUILT_VENDOR_RAMDISK_KERNEL_MODULES = fips140/fips140.ko
-BOARD_VENDOR_RAMDISK_KERNEL_MODULES_LOAD_EXTRA = $(foreach k,$(BOARD_PREBUILT_VENDOR_RAMDISK_KERNEL_MODULES),$(if $(wildcard $(KERNEL_MODULE_DIR)/$(k)), $(k)))
-KERNEL_MODULES += $(addprefix $(KERNEL_MODULE_DIR)/, $(BOARD_VENDOR_RAMDISK_KERNEL_MODULES_LOAD_EXTRA))
-
-# Kernel modules that are listed in vendor_boot.modules.load
-BOARD_VENDOR_RAMDISK_KERNEL_MODULES_LOAD_FILE := $(strip $(shell cat $(KERNEL_MODULE_DIR)/vendor_boot.modules.load))
-ifndef BOARD_VENDOR_RAMDISK_KERNEL_MODULES_LOAD_FILE
-$(error vendor_boot.modules.load not found or empty)
+BOARD_VENDOR_KERNEL_RAMDISK_KERNEL_MODULES_LOAD := $(strip $(shell cat $(KERNEL_MODULE_DIR)/vendor_kernel_boot.modules.load))
+ifndef BOARD_VENDOR_KERNEL_RAMDISK_KERNEL_MODULES_LOAD
+$(error vendor_kernel_boot.modules.load not found or empty)
 endif
-BOARD_VENDOR_RAMDISK_KERNEL_MODULES_LOAD := $(BOARD_VENDOR_RAMDISK_KERNEL_MODULES_LOAD_EXTRA)
-BOARD_VENDOR_RAMDISK_KERNEL_MODULES_LOAD += $(BOARD_VENDOR_RAMDISK_KERNEL_MODULES_LOAD_FILE)
-BOARD_VENDOR_RAMDISK_KERNEL_MODULES := $(addprefix $(KERNEL_MODULE_DIR)/, $(BOARD_VENDOR_RAMDISK_KERNEL_MODULES_LOAD_EXTRA))
-BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(addprefix $(KERNEL_MODULE_DIR)/, $(notdir $(BOARD_VENDOR_RAMDISK_KERNEL_MODULES_LOAD_FILE)))
+BOARD_VENDOR_KERNEL_RAMDISK_KERNEL_MODULES := $(addprefix $(KERNEL_MODULE_DIR)/, $(notdir $(BOARD_VENDOR_KERNEL_RAMDISK_KERNEL_MODULES_LOAD)))
 
-BOARD_VENDOR_KERNEL_MODULES_LOAD += $(strip $(shell cat $(KERNEL_MODULE_DIR)/vendor_dlkm.modules.load))
+BOARD_VENDOR_KERNEL_MODULES_LOAD := $(strip $(shell cat $(KERNEL_MODULE_DIR)/vendor_dlkm.modules.load))
 ifndef BOARD_VENDOR_KERNEL_MODULES_LOAD
 $(error vendor_dlkm.modules.load not found or empty)
 endif
-BOARD_VENDOR_KERNEL_MODULES += $(KERNEL_MODULES)
+BOARD_VENDOR_KERNEL_MODULES := $(addprefix $(KERNEL_MODULE_DIR)/, $(notdir $(BOARD_VENDOR_KERNEL_MODULES_LOAD)))
+
+BOARD_SYSTEM_KERNEL_MODULES_LOAD := $(strip $(shell cat $(KERNEL_MODULE_DIR)/system_dlkm.modules.load))
+ifndef BOARD_SYSTEM_KERNEL_MODULES_LOAD
+$(error system_dlkm.modules.load not found or empty)
+endif
+BOARD_SYSTEM_KERNEL_MODULES := $(addprefix $(KERNEL_MODULE_DIR)/, $(notdir $(BOARD_SYSTEM_KERNEL_MODULES_LOAD)))
 
 # Using BUILD_COPY_HEADERS
 BUILD_BROKEN_USES_BUILD_COPY_HEADERS := true
 
-include device/google/gs101/sepolicy/gs101-sepolicy.mk
+include device/google/zuma/sepolicy/zuma-sepolicy.mk
 
 # Battery options
 BOARD_KERNEL_CMDLINE += at24.write_timeout=100
@@ -393,6 +422,7 @@ BOARD_KERNEL_CMDLINE += log_buf_len=1024K
 # Protected VM firmware
 BOARD_PVMFWIMAGE_PARTITION_SIZE := 0x00100000
 
+# pick up library for cleaning digital car keys on factory reset
 -include vendor/google_devices/gs-common/proprietary/BoardConfigVendor.mk
 
-include device/google/gs101/BoardConfigLineage.mk
+include device/google/zuma/BoardConfigLineage.mk
