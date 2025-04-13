@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2021 The Calyx Institute
+# Copyright (C) 2023 The LineageOS Project
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -10,7 +10,9 @@ TARGET_HEALTH_CHARGING_CONTROL_SUPPORTS_TOGGLE := false
 
 # Manifests
 DEVICE_FRAMEWORK_COMPATIBILITY_MATRIX_FILE += vendor/lineage/config/device_framework_matrix.xml
-DEVICE_MANIFEST_FILE += device/google/gs101/manifest_radio.xml
+DEVICE_MANIFEST_FILE += \
+    device/google/zuma/android.hardware.security.rkp-service.citadel.xml \
+    device/google/zuma/manifest_radio_ds.xml
 
 # Partitions
 AB_OTA_PARTITIONS += \
@@ -35,4 +37,4 @@ AB_OTA_PARTITIONS += \
 -include vendor/lineage/config/BoardConfigReservedSize.mk
 
 # Verified Boot
-# BOARD_AVB_MAKE_VBMETA_IMAGE_ARGS += --flags 3
+#BOARD_AVB_MAKE_VBMETA_IMAGE_ARGS += --flags 3
