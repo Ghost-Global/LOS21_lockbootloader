@@ -5,10 +5,10 @@
 Follow the steps below to update the necessary files:
 
 - **Makefile:** `build/core/Makefile`
-- **BoardConfig-common.mk:** `device/google/gs101/BoardConfig-common.mk`
-- **BoardConfigLineage.mk:** `device/google/gs101/BoardConfigLineage.mk`
-- **BoardConfigLineage_bluejay.mk:** `device/google/bluejay/BoardConfigLineage.mk`
-- **avb_rsa4096.pem:** `external/avb/test/data/avb_rsa4096.pem`
+- **BoardConfig-common.mk:** `device/google/zuma/BoardConfig-common.mk`
+- **BoardConfigLineage.mk:** `device/google/zuma/BoardConfigLineage.mk`
+- **BoardConfigLineage_bluejay.mk:** `device/google/akita/BoardConfigLineage.mk`
+- **avb_rsa4096.pem:** `/home/huytp/.android-certs/releasekey.key`
 
 #### Step 2: Rebuild the OS
 Execute the following commands to rebuild the OS:
@@ -29,7 +29,7 @@ brunch bluejay
 Run the following command to extract the public key and create the `pkmd.bin` file:
 
 ```bash
-external/avb/avbtool.py extract_public_key --key external/avb/test/data/avb_rsa4096.pem --output pkmd.bin
+external/avb/avbtool.py extract_public_key --key /home/huytp/.android-certs/releasekey.key --output pkmd.bin
 ```
 
 #### Step 4: Flash the Software
